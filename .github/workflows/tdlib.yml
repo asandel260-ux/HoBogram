@@ -20,8 +20,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gperf php-cli ninja-build zip
       - name: Install SDK pieces
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "ndk;$NDK_VERSION" "cmake;3.22.1" "platforms;android-34"
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | tail -1)
+          echo "Using $SDKM"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "ndk;$NDK_VERSION" "cmake;3.22.1" "platforms;android-34"
       - name: Fetch TDLib
         run: |
           mkdir td && cd td && git init -q
