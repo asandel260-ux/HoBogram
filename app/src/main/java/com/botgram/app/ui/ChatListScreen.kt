@@ -177,7 +177,7 @@ fun ChatListScreen(
                                 Text(session.account.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
                                     when (conn.kind) {
-                                        "online" -> "@${session.account.username} · online"
+                                        "online" -> "@${session.account.username} · online" + if (session.account.mtproto) " (MTProto)" else ""
                                         "connecting" -> "connecting…"
                                         "sendonly" -> "@${session.account.username} · send-only (webhook kept)"
                                         "offline" -> "waiting for network…"
@@ -208,7 +208,7 @@ fun ChatListScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            if (conn.kind == "unauthorized") "The token was revoked. Sign out and sign in with the new token."
+                            if (conn.kind == "unauthorized") "Cannot connect: ${conn.detail.ifBlank { "the token was revoked" }}. Check your token / api_id / api_hash in Bot settings."
                             else "Another client or a webhook is receiving this bot's updates.",
                             modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,

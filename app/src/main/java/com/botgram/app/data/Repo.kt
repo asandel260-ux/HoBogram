@@ -82,12 +82,20 @@ object Repo {
 
     fun activate(acc: Account) {
         pollJob?.cancel()
+        Mtproto.stop()
         urlCache.clear()
         accounts.activeId = acc.id
         val store = Store(File(ctx.filesDir, "store_${acc.id}.json"), scope).also { it.load() }
         val s = Session(acc, BotApi(acc.token), store)
         session.value = s
-        if (acc.sendOnly) {
+        if (acc.mtproto) {
+            if (accounts.apiId == 0 || accounts.apiHash.isBlank()) {
+                conn.value = Conn("unauthorized", "API ID / hash missing")
+            } else {
+                conn.value = Conn("connecting")
+                Mtproto.start(s, accounts.apiId, accounts.apiHash)
+            }
+        } else if (acc.sendOnly) {
             conn.value = Conn("sendonly")
         } else {
             conn.value = Conn("connecting")
@@ -95,11 +103,14 @@ object Repo {
         }
     }
 
-    /** Switch the active bot between receiving (polling, webhook removed) and send-only (webhook untouched). */
-    suspend fun setSendOnly(sendOnly: Boolean): Result<Unit> = attempt {
+    /** mode: "poll" (Bot API getUpdates, removes webhook), "mtproto" (TDLib, webhook untouched), "sendonly". */
+    suspend fun setMode(mode: String): Result<Unit> = attempt {
         val s = cur()
-        if (!sendOnly) s.api.call("deleteWebhook")
-        val updated = s.account.copy(sendOnly = sendOnly)
+        if (mode == "mtproto" && (accounts.apiId == 0 || accounts.apiHash.isBlank())) {
+            error("Set your API ID and hash first (sign-in screen → MTProto settings)")
+        }
+        if (mode == "poll") s.api.call("deleteWebhook")
+        val updated = s.account.copy(sendOnly = mode == "sendonly", mtproto = mode == "mtproto")
         accounts.add(updated)
         activate(updated)
     }
@@ -112,9 +123,9 @@ object Repo {
         acc to hook
     }
 
-    suspend fun commitLogin(acc: Account, removeWebhook: Boolean, sendOnly: Boolean = false): Result<Unit> = attempt {
+    suspend fun commitLogin(acc: Account, removeWebhook: Boolean, mode: String = "poll"): Result<Unit> = attempt {
         if (removeWebhook) BotApi(acc.token).call("deleteWebhook")
-        val a = acc.copy(sendOnly = sendOnly)
+        val a = acc.copy(sendOnly = mode == "sendonly", mtproto = mode == "mtproto")
         accounts.add(a)
         activate(a)
     }
@@ -123,6 +134,8 @@ object Repo {
         val current = session.value
         accounts.remove(id)
         File(ctx.filesDir, "store_$id.json").delete()
+        if (current?.account?.id == id) Mtproto.stop()
+        Mtproto.wipe(id)
         if (current?.account?.id == id) {
             pollJob?.cancel()
             val next = accounts.list().firstOrNull()
@@ -215,6 +228,10 @@ object Repo {
     private fun onMessage(s: Session, j: JSONObject, edited: Boolean) {
         val chat = parseChat(j.getJSONObject("chat"))
         val m = parseMsg(j, s.account.id).copy(edited = edited || j.has("edit_date"))
+        deliver(s, chat, m, edited)
+    }
+
+    fun deliver(s: Session, chat: Chat, m: Msg, edited: Boolean) {
         val incoming = !m.out
         val viewing = foreground && openChatId == chat.id
         val countable = incoming && !edited && !m.service
@@ -246,6 +263,9 @@ object Repo {
             }
         }
     }
+
+    fun note(s: Session, chat: Chat, text: String, dateSec: Long, userId: Long = 0, name: String = "") =
+        serviceNote(s, chat, text, dateSec, userId, name)
 
     private fun serviceNote(s: Session, chat: Chat, text: String, dateSec: Long, userId: Long = 0, name: String = "") {
         val note = Msg(

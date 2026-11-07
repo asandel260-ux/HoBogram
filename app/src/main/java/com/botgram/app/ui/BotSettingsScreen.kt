@@ -17,6 +17,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -101,8 +103,16 @@ fun BotSettingsScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
                 trailingContent = { Switch(checked = bg, onCheckedChange = { Repo.setBackground(it) }) },
             )
             ListItem(
-                headlineContent = { Text(if (session.account.sendOnly) "Mode: send-only (webhook kept)" else "Mode: receiving (polling)") },
-                supportingContent = { Text(if (session.account.sendOnly) "Tap to receive messages here instead. This removes your webhook." else "Tap to switch to send-only. You must set your webhook again yourself to resume your server.") },
+                headlineContent = {
+                    Text(
+                        "Mode: " + when {
+                            session.account.mtproto -> "MTProto (webhook kept)"
+                            session.account.sendOnly -> "send-only (webhook kept)"
+                            else -> "Bot API polling"
+                        },
+                    )
+                },
+                supportingContent = { Text("Tap to change how this bot receives messages.") },
                 modifier = Modifier.clickable { dialog = "mode" },
             )
             ListItem(
@@ -168,11 +178,38 @@ fun BotSettingsScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
         }
     }
     when (dialog) {
-        "mode" -> ConfirmDialog(
-            "Switch mode?",
-            if (session.account.sendOnly) "BotGram will delete the bot's webhook and start receiving updates." else "BotGram stops receiving updates. Your server's webhook is NOT restored automatically.",
-            "Switch", onDismiss = { dialog = "" },
-        ) { scope.launch { Repo.setSendOnly(!session.account.sendOnly).onFailure { say(it.friendly()) } } }
+        "mode" -> AlertDialog(
+            onDismissRequest = { dialog = "" },
+            title = { Text("Receive mode") },
+            text = {
+                Column {
+                    listOf(
+                        Triple("poll", "Bot API polling", "Receives messages. Removes your webhook."),
+                        Triple("mtproto", "MTProto", "Receives messages and keeps your webhook. Needs api_id/api_hash."),
+                        Triple("sendonly", "Send-only", "Keeps your webhook; no incoming messages here."),
+                    ).forEach { (k, t, d) ->
+                        ListItem(
+                            headlineContent = { Text(t) }, supportingContent = { Text(d) },
+                            leadingContent = {
+                                RadioButton(
+                                    selected = when (k) {
+                                        "mtproto" -> session.account.mtproto
+                                        "sendonly" -> session.account.sendOnly
+                                        else -> !session.account.mtproto && !session.account.sendOnly
+                                    },
+                                    onClick = null,
+                                )
+                            },
+                            modifier = Modifier.clickable {
+                                dialog = ""
+                                scope.launch { Repo.setMode(k).onFailure { say(it.friendly()) } }
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dialog = "" }) { Text("Close") } },
+        )
         "commands" -> TextInputDialog(
             "Commands", "one per line: command - description", commands, singleLine = false,
             onDismiss = { dialog = "" },

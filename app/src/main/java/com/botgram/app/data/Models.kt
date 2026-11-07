@@ -3,7 +3,7 @@ package com.botgram.app.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class Account(val token: String, val id: Long, val username: String, val name: String, val sendOnly: Boolean = false)
+data class Account(val token: String, val id: Long, val username: String, val name: String, val sendOnly: Boolean = false, val mtproto: Boolean = false)
 
 data class Chat(
     val id: Long,

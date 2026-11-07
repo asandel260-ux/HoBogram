@@ -57,13 +57,24 @@ fun LoginScreen(onLoggedIn: () -> Unit, onBack: (() -> Unit)?) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingHook by remember { mutableStateOf<Account?>(null) }
+    var apiId by remember { mutableStateOf(Repo.accounts.apiId.takeIf { it != 0 }?.toString().orEmpty()) }
+    var apiHash by remember { mutableStateOf(Repo.accounts.apiHash) }
+
+    fun saveApi(): Boolean {
+        val id = apiId.trim().toIntOrNull()
+        val h = apiHash.trim()
+        if (id == null || id <= 0 || h.length < 20) return false
+        Repo.accounts.apiId = id
+        Repo.accounts.apiHash = h
+        return true
+    }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
 
-    fun finish(acc: Account, removeHook: Boolean, sendOnly: Boolean = false) {
+    fun finish(acc: Account, removeHook: Boolean, mode: String = "poll") {
         busy = true
         scope.launch {
-            Repo.commitLogin(acc, removeHook, sendOnly)
+            Repo.commitLogin(acc, removeHook, mode)
                 .onSuccess { onLoggedIn() }
                 .onFailure { error = it.friendly() }
             busy = false
@@ -133,6 +144,22 @@ fun LoginScreen(onLoggedIn: () -> Unit, onBack: (() -> Unit)?) {
                     }
                 },
             )
+            Text("MTProto settings (optional)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Needed only to receive messages while keeping your webhook. Create an app at my.telegram.org → API development tools, then enter its api_id and api_hash.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = apiId, onValueChange = { apiId = it.filter(Char::isDigit) }, label = { Text("api_id") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            OutlinedTextField(
+                value = apiHash, onValueChange = { apiHash = it.trim() }, label = { Text("api_hash") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+            )
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             Button(onClick = { connect() }, enabled = !busy && token.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Connect")
@@ -151,15 +178,28 @@ fun LoginScreen(onLoggedIn: () -> Unit, onBack: (() -> Unit)?) {
             onDismissRequest = { pendingHook = null },
             title = { Text("Webhook is active") },
             text = {
-                Text(
-                    "@${acc.username} has a webhook configured. The Bot API allows only one way of receiving " +
-                        "updates, so you can either:\n\n• Remove the webhook to receive messages in BotGram " +
-                        "(your server stops getting updates), or\n• Keep the webhook: BotGram works in send-only mode " +
-                        "(send, edit, delete, manage chats) but incoming messages won't show up here.",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "@${acc.username} has a webhook. The Bot API lets only one consumer receive updates, " +
+                            "so choose how BotGram should work:",
+                    )
+                    TextButton(onClick = { pendingHook = null; finish(acc, true, "poll") }) {
+                        Text("Remove webhook and receive here")
+                    }
+                    TextButton(onClick = {
+                        if (saveApi()) {
+                            pendingHook = null; finish(acc, false, "mtproto")
+                        } else {
+                            pendingHook = null
+                            error = "Enter a valid api_id and api_hash below, then connect again."
+                        }
+                    }) { Text("Keep webhook, receive via MTProto") }
+                    TextButton(onClick = { pendingHook = null; finish(acc, false, "sendonly") }) {
+                        Text("Keep webhook, send-only")
+                    }
+                }
             },
-            confirmButton = { TextButton(onClick = { pendingHook = null; finish(acc, true) }) { Text("Remove webhook & sign in") } },
-            dismissButton = { TextButton(onClick = { pendingHook = null; finish(acc, false, sendOnly = true) }) { Text("Keep webhook (send-only)") } },
+            confirmButton = { TextButton(onClick = { pendingHook = null }) { Text("Cancel") } },
         )
     }
 }

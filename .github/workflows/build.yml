@@ -16,6 +16,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
+      - name: Fetch TDLib native libs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download tdlib-libs -p tdlib-libs.zip
+          mkdir -p app/src/main/jniLibs
+          unzip -o tdlib-libs.zip -d app/src/main/jniLibs
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4

@@ -25,7 +25,7 @@ class Accounts(ctx: Context) {
         val raw = prefs.getString("accounts", null) ?: return emptyList()
         return try {
             JSONArray(raw).objects().map {
-                Account(it.getString("token"), it.getLong("id"), it.optString("username"), it.optString("name"), it.optBoolean("sendOnly"))
+                Account(it.getString("token"), it.getLong("id"), it.optString("username"), it.optString("name"), it.optBoolean("sendOnly"), it.optBoolean("mtproto"))
             }
         } catch (e: Exception) {
             emptyList()
@@ -35,7 +35,7 @@ class Accounts(ctx: Context) {
     private fun save(l: List<Account>) {
         val arr = JSONArray()
         l.forEach {
-            arr.put(JSONObject().put("token", it.token).put("id", it.id).put("username", it.username).put("name", it.name).put("sendOnly", it.sendOnly))
+            arr.put(JSONObject().put("token", it.token).put("id", it.id).put("username", it.username).put("name", it.name).put("sendOnly", it.sendOnly).put("mtproto", it.mtproto))
         }
         prefs.edit().putString("accounts", arr.toString()).apply()
     }
@@ -43,6 +43,18 @@ class Accounts(ctx: Context) {
     fun add(a: Account) = save(list().filter { it.id != a.id } + a)
 
     fun remove(id: Long) = save(list().filter { it.id != id })
+
+    var apiId: Int
+        get() = prefs.getInt("api_id", 0)
+        set(v) {
+            prefs.edit().putInt("api_id", v).apply()
+        }
+
+    var apiHash: String
+        get() = prefs.getString("api_hash", "") ?: ""
+        set(v) {
+            prefs.edit().putString("api_hash", v).apply()
+        }
 
     var activeId: Long
         get() = prefs.getLong("active", 0)
