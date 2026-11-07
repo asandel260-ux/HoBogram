@@ -101,6 +101,11 @@ fun BotSettingsScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
                 trailingContent = { Switch(checked = bg, onCheckedChange = { Repo.setBackground(it) }) },
             )
             ListItem(
+                headlineContent = { Text(if (session.account.sendOnly) "Mode: send-only (webhook kept)" else "Mode: receiving (polling)") },
+                supportingContent = { Text(if (session.account.sendOnly) "Tap to receive messages here instead. This removes your webhook." else "Tap to switch to send-only. You must set your webhook again yourself to resume your server.") },
+                modifier = Modifier.clickable { dialog = "mode" },
+            )
+            ListItem(
                 headlineContent = { Text("Auto-answer button presses") },
                 supportingContent = { Text("Dismisses the loading spinner on users' inline buttons so they don't hang. Turn off if another process answers callbacks.") },
                 trailingContent = { Switch(checked = auto, onCheckedChange = { Repo.setAutoAnswer(it) }) },
@@ -163,6 +168,11 @@ fun BotSettingsScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
         }
     }
     when (dialog) {
+        "mode" -> ConfirmDialog(
+            "Switch mode?",
+            if (session.account.sendOnly) "BotGram will delete the bot's webhook and start receiving updates." else "BotGram stops receiving updates. Your server's webhook is NOT restored automatically.",
+            "Switch", onDismiss = { dialog = "" },
+        ) { scope.launch { Repo.setSendOnly(!session.account.sendOnly).onFailure { say(it.friendly()) } } }
         "commands" -> TextInputDialog(
             "Commands", "one per line: command - description", commands, singleLine = false,
             onDismiss = { dialog = "" },

@@ -60,10 +60,10 @@ fun LoginScreen(onLoggedIn: () -> Unit, onBack: (() -> Unit)?) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
 
-    fun finish(acc: Account, removeHook: Boolean) {
+    fun finish(acc: Account, removeHook: Boolean, sendOnly: Boolean = false) {
         busy = true
         scope.launch {
-            Repo.commitLogin(acc, removeHook)
+            Repo.commitLogin(acc, removeHook, sendOnly)
                 .onSuccess { onLoggedIn() }
                 .onFailure { error = it.friendly() }
             busy = false
@@ -152,13 +152,14 @@ fun LoginScreen(onLoggedIn: () -> Unit, onBack: (() -> Unit)?) {
             title = { Text("Webhook is active") },
             text = {
                 Text(
-                    "@${acc.username} has a webhook configured. Telegram only allows one way of receiving " +
-                        "updates, so BotGram must remove the webhook to receive messages. Your server " +
-                        "will stop getting updates for this bot until you set the webhook again.",
+                    "@${acc.username} has a webhook configured. The Bot API allows only one way of receiving " +
+                        "updates, so you can either:\n\n• Remove the webhook to receive messages in BotGram " +
+                        "(your server stops getting updates), or\n• Keep the webhook: BotGram works in send-only mode " +
+                        "(send, edit, delete, manage chats) but incoming messages won't show up here.",
                 )
             },
             confirmButton = { TextButton(onClick = { pendingHook = null; finish(acc, true) }) { Text("Remove webhook & sign in") } },
-            dismissButton = { TextButton(onClick = { pendingHook = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pendingHook = null; finish(acc, false, sendOnly = true) }) { Text("Keep webhook (send-only)") } },
         )
     }
 }

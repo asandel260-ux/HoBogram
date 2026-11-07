@@ -179,6 +179,7 @@ fun ChatListScreen(
                                     when (conn.kind) {
                                         "online" -> "@${session.account.username} · online"
                                         "connecting" -> "connecting…"
+                                        "sendonly" -> "@${session.account.username} · send-only (webhook kept)"
                                         "offline" -> "waiting for network…"
                                         "conflict" -> "conflict"
                                         else -> "signed out"
@@ -228,7 +229,7 @@ fun ChatListScreen(
                     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(
                             if (chats.isEmpty())
-                                "No chats yet.\n\nMessage your bot from Telegram, add it to a group, or tap + to open a chat by ID or @username (channels and supergroups the bot is in)."
+                                (if (conn.kind == "sendonly") "Send-only mode: incoming messages go to your webhook. Tap + and enter a chat ID or @username to send messages.\n\n" else "") + "No chats yet.\n\nMessage your bot from Telegram, add it to a group, or tap + to open a chat by ID or @username (channels and supergroups the bot is in)."
                             else "Nothing matches.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

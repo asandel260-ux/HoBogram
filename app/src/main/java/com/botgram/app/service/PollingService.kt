@@ -23,7 +23,7 @@ class PollingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val s = Repo.session.value
-        if (s == null || !Repo.backgroundService.value) {
+        if (s == null || s.account.sendOnly || !Repo.backgroundService.value) {
             stopSelf()
             return START_NOT_STICKY
         }

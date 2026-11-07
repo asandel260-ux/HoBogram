@@ -87,8 +87,21 @@ object Repo {
         val store = Store(File(ctx.filesDir, "store_${acc.id}.json"), scope).also { it.load() }
         val s = Session(acc, BotApi(acc.token), store)
         session.value = s
-        conn.value = Conn("connecting")
-        startPolling(s)
+        if (acc.sendOnly) {
+            conn.value = Conn("sendonly")
+        } else {
+            conn.value = Conn("connecting")
+            startPolling(s)
+        }
+    }
+
+    /** Switch the active bot between receiving (polling, webhook removed) and send-only (webhook untouched). */
+    suspend fun setSendOnly(sendOnly: Boolean): Result<Unit> = attempt {
+        val s = cur()
+        if (!sendOnly) s.api.call("deleteWebhook")
+        val updated = s.account.copy(sendOnly = sendOnly)
+        accounts.add(updated)
+        activate(updated)
     }
 
     suspend fun probe(token: String): Result<Pair<Account, Boolean>> = attempt {
@@ -99,10 +112,11 @@ object Repo {
         acc to hook
     }
 
-    suspend fun commitLogin(acc: Account, removeWebhook: Boolean): Result<Unit> = attempt {
+    suspend fun commitLogin(acc: Account, removeWebhook: Boolean, sendOnly: Boolean = false): Result<Unit> = attempt {
         if (removeWebhook) BotApi(acc.token).call("deleteWebhook")
-        accounts.add(acc)
-        activate(acc)
+        val a = acc.copy(sendOnly = sendOnly)
+        accounts.add(a)
+        activate(a)
     }
 
     fun logout(id: Long) {

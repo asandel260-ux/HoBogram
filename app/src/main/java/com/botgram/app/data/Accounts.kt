@@ -25,7 +25,7 @@ class Accounts(ctx: Context) {
         val raw = prefs.getString("accounts", null) ?: return emptyList()
         return try {
             JSONArray(raw).objects().map {
-                Account(it.getString("token"), it.getLong("id"), it.optString("username"), it.optString("name"))
+                Account(it.getString("token"), it.getLong("id"), it.optString("username"), it.optString("name"), it.optBoolean("sendOnly"))
             }
         } catch (e: Exception) {
             emptyList()
@@ -35,7 +35,7 @@ class Accounts(ctx: Context) {
     private fun save(l: List<Account>) {
         val arr = JSONArray()
         l.forEach {
-            arr.put(JSONObject().put("token", it.token).put("id", it.id).put("username", it.username).put("name", it.name))
+            arr.put(JSONObject().put("token", it.token).put("id", it.id).put("username", it.username).put("name", it.name).put("sendOnly", it.sendOnly))
         }
         prefs.edit().putString("accounts", arr.toString()).apply()
     }
