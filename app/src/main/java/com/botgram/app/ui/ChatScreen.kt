@@ -235,6 +235,16 @@ fun ChatScreen(chatId: Long, onBack: () -> Unit, onInfo: () -> Unit) {
                                 }.onFailure { report(Result.failure<Unit>(it)) }
                             }
                         })
+                        if (chat.type == "supergroup" || chat.type == "channel") {
+                            DropdownMenuItem(text = { Text("Load older messages") }, onClick = {
+                                menuOpen = false
+                                scope.launch {
+                                    Repo.loadOlder(chatId)
+                                        .onSuccess { snack.showSnackbar(if (it == 0) "No older messages found" else "Loaded $it older messages") }
+                                        .onFailure { report(Result.failure<Unit>(it)) }
+                                }
+                            })
+                        }
                         DropdownMenuItem(text = { Text("Clear local history") }, onClick = { menuOpen = false; confirmClear = true })
                     }
                 },

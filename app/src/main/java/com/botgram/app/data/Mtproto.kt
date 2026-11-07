@@ -7,7 +7,10 @@ import org.drinkless.tdlib.TdApi
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Receives live updates over MTProto (TDLib), logged in as the bot via its token.
@@ -62,6 +65,41 @@ object Mtproto {
 
     private fun send(f: TdApi.Function<*>, onError: ((TdApi.Error) -> Unit)? = null) {
         client?.send(f) { r -> if (r is TdApi.Error) onError?.invoke(r) }
+    }
+
+    private suspend fun await(f: TdApi.Function<*>): TdApi.Object = suspendCancellableCoroutine { cont ->
+        val c = client
+        if (c == null) {
+            cont.resumeWithException(IllegalStateException("MTProto is not connected"))
+        } else {
+            c.send(f) { r ->
+                if (r is TdApi.Error) cont.resumeWithException(TgException(r.code, r.message)) else cont.resume(r)
+            }
+        }
+    }
+
+    /**
+     * Loads up to [count] messages older than [beforeId] by probing consecutive ids. Message ids are
+     * per-chat only in supergroups and channels, so this is meaningless for private chats / basic groups.
+     * Returns how many messages were found.
+     */
+    suspend fun loadOlder(chatId: Long, beforeId: Int, count: Int = 100): Int {
+        val s = current ?: throw IllegalStateException("MTProto is not connected")
+        if (!chats.containsKey(chatId)) await(TdApi.GetChat(chatId))
+        val hi = beforeId - 1
+        if (hi <= 0) return 0
+        val lo = maxOf(1, hi - count + 1)
+        val ids = LongArray(hi - lo + 1) { (hi - it).toLong() shl 20 }
+        val res = await(TdApi.GetMessages(chatId, ids)) as TdApi.Messages
+        val chat = s.store.chats.value.firstOrNull { it.id == chatId } ?: chatFor(chatId)
+        var n = 0
+        for (m in res.messages) {
+            @Suppress("SENSELESS_COMPARISON")
+            if (m == null || m.sendingState != null) continue
+            s.store.putMessage(chat, convert(s, m), unread = false)
+            n++
+        }
+        return n
     }
 
     // ------------------------------------------------------------------ updates

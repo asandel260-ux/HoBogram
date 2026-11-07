@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -88,6 +89,9 @@ fun ChatListScreen(
     var searching by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf("all") }
     var openDialog by remember { mutableStateOf(false) }
+    var importOpen by remember { mutableStateOf(false) }
+    var topMenu by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<Long?>(null) }
     val accounts = remember(sess) { Repo.accounts.list() }
 
@@ -193,6 +197,26 @@ fun ChatListScreen(
                         IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                             Icon(if (searching) Icons.Default.Close else Icons.Default.Search, "Search")
                         }
+                        Box {
+                            IconButton(onClick = { topMenu = true }) { Icon(Icons.Default.MoreVert, "More") }
+                            DropdownMenu(expanded = topMenu, onDismissRequest = { topMenu = false }) {
+                                DropdownMenuItem(text = { Text("Import chats…") }, onClick = { topMenu = false; importOpen = true })
+                                DropdownMenuItem(
+                                    text = { Text(if (refreshing) "Refreshing…" else "Refresh all chats") },
+                                    enabled = !refreshing,
+                                    onClick = {
+                                        topMenu = false
+                                        refreshing = true
+                                        scope.launch {
+                                            Repo.refreshAll()
+                                                .onSuccess { snack.showSnackbar("Refreshed ${it.ok} chats, ${it.inactive} inactive, ${it.failed.size} failed") }
+                                                .onFailure { snack.showSnackbar(it.friendly()) }
+                                            refreshing = false
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     },
                 )
             },
@@ -229,7 +253,7 @@ fun ChatListScreen(
                     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(
                             if (chats.isEmpty())
-                                (if (conn.kind == "sendonly") "Send-only mode: incoming messages go to your webhook. Tap + and enter a chat ID or @username to send messages.\n\n" else "") + "No chats yet.\n\nMessage your bot from Telegram, add it to a group, or tap + to open a chat by ID or @username (channels and supergroups the bot is in)."
+                                (if (conn.kind == "sendonly") "Send-only mode: incoming messages go to your webhook. Tap + and enter a chat ID or @username to send messages.\n\n" else "") + "No chats yet.\n\nTelegram doesn't let bots list their chats. Message your bot, add it to a group, tap + to open one chat, or use ⋮ → Import chats to add many by ID."
                             else "Nothing matches.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -265,6 +289,8 @@ fun ChatListScreen(
             }
         }
     }
+
+    if (importOpen) ImportChatsDialog(onDismiss = { importOpen = false })
 
     if (openDialog) {
         TextInputDialog(

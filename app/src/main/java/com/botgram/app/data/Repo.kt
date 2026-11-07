@@ -508,6 +508,76 @@ object Repo {
 
     // ---------------------------------------------------------------- chats
 
+    class ImportResult(val ok: Int, val inactive: Int, val failed: List<String>)
+
+    /** Accepts numeric ids, @usernames, plain usernames and t.me links, separated by whitespace/commas/semicolons. */
+    fun parseChatRefs(text: String): List<Any> =
+        text.split(Regex("[\\s,;]+")).map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull { raw ->
+            val t = raw.removePrefix("https://").removePrefix("http://").removePrefix("t.me/").removePrefix("telegram.me/")
+                .substringBefore('?').substringBefore('/')
+            t.toLongOrNull() ?: when {
+                t.startsWith("@") && t.length > 1 -> t
+                t.matches(Regex("[A-Za-z][A-Za-z0-9_]{3,}")) -> "@$t"
+                else -> null
+            }
+        }.distinct()
+
+    /** Looks up each chat, stores it, and records whether the bot is still a member. */
+    suspend fun verifyChats(
+        refs: List<Any>,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): ImportResult {
+        val s = cur()
+        var ok = 0
+        var inactive = 0
+        val failed = ArrayList<String>()
+        refs.forEachIndexed { i, ref ->
+            try {
+                var chat = parseChat(s.api.callObj("getChat", mapOf("chat_id" to ref)))
+                var gone = false
+                if (!chat.isPrivate) {
+                    try {
+                        val st = s.api.callObj("getChatMember", mapOf("chat_id" to chat.id, "user_id" to s.account.id)).optString("status")
+                        gone = st == "left" || st == "kicked"
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: TgException) {
+                        gone = e.code == 403
+                    }
+                }
+                s.store.upsertChat(chat)
+                s.store.markLeft(chat.id, gone)
+                if (gone) inactive++
+                ok++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TgException) {
+                // the bot can no longer see this chat: keep it listed (if known) but mark inactive
+                val id = ref as? Long
+                if (id != null && s.store.chats.value.any { it.id == id } && (e.code == 403 || e.code == 400)) {
+                    s.store.markLeft(id, true); inactive++
+                } else failed.add("$ref — ${e.message}")
+            } catch (e: Exception) {
+                failed.add("$ref — ${e.friendly()}")
+            }
+            onProgress(i + 1, refs.size)
+            delay(50)
+        }
+        return ImportResult(ok, inactive, failed)
+    }
+
+    suspend fun refreshAll(onProgress: (Int, Int) -> Unit = { _, _ -> }): Result<ImportResult> = attempt {
+        verifyChats(cur().store.chats.value.map { it.id }, onProgress)
+    }
+
+    suspend fun loadOlder(chatId: Long): Result<Int> = attempt {
+        val s = cur()
+        if (!s.account.mtproto) error("Loading older messages needs MTProto mode (Bot settings → Receive mode).")
+        val oldest = s.store.messages.value[chatId].orEmpty().filter { it.id > 0 }.minOfOrNull { it.id }
+            ?: error("Nothing to start from yet — receive or send one message in this chat first.")
+        Mtproto.loadOlder(chatId, oldest)
+    }
+
     suspend fun openChat(input: String): Result<Long> = attempt {
         val s = cur()
         val t = input.trim().removePrefix("https://t.me/").removePrefix("http://t.me/").removePrefix("t.me/")
